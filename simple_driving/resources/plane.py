@@ -7,5 +7,3 @@ class Plane:
         f_name = os.path.join(os.path.dirname(__file__), 'simpleplane.urdf')
         client.loadURDF(fileName=f_name,
                    basePosition=[0, 0, 0])
-
-

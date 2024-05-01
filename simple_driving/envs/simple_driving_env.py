@@ -15,10 +15,8 @@ RENDER_WIDTH = 960
 class SimpleDrivingEnv(gym.Env):
     metadata = {'render.modes': ['human', 'fp_camera', 'tp_camera']}
 
-    def __init__(self, epsilon=0.1, isDiscrete=True, renders=False):
-        self.epsilon = epsilon
-
-        if isDiscrete:
+    def __init__(self, isDiscrete=True, renders=False):
+        if (isDiscrete):
             self.action_space = gym.spaces.Discrete(9)
         else:
             self.action_space = gym.spaces.box.Box(
@@ -30,9 +28,9 @@ class SimpleDrivingEnv(gym.Env):
         self.np_random, _ = gym.utils.seeding.np_random()
 
         if renders:
-            self._p = bc.BulletClient(connection_mode=p.GUI)
+          self._p = bc.BulletClient(connection_mode=p.GUI)
         else:
-            self._p = bc.BulletClient()
+          self._p = bc.BulletClient()
 
         self.reached_goal = False
         self._timeStep = 0.01
@@ -51,54 +49,49 @@ class SimpleDrivingEnv(gym.Env):
 
     def step(self, action):
         # Feed action to the car and get observation of car's state
-        if self._isDiscrete:
+        if (self._isDiscrete):
             fwd = [-1, -1, -1, 0, 0, 0, 1, 1, 1]
             steerings = [-0.6, 0, 0.6, -0.6, 0, 0.6, -0.6, 0, 0.6]
             throttle = fwd[action]
             steering_angle = steerings[action]
             action = [throttle, steering_angle]
-        else:
-            # Sample actions from within the defined bounds
-            action = self.np_random.uniform(self.action_space.low, self.action_space.high)
-
-        # Clip continuous actions to ensure they are within bounds
-        if not self._isDiscrete:
-            action = np.clip(action, self.action_space.low, self.action_space.high)
-        # Verify that discrete actions are within valid range
-        elif action < 0 or action >= self.action_space.n:
-            raise ValueError("Invalid action: {}".format(action))
-    
         self.car.apply_action(action)
         for i in range(self._actionRepeat):
-            self._p.stepSimulation()
-            if self._renders:
-                time.sleep(self._timeStep)
-    
-            carpos, carorn = self._p.getBasePositionAndOrientation(self.car.car)
-            goalpos, goalorn = self._p.getBasePositionAndOrientation(self.goal_object.goal)
-            car_ob = self.getExtendedObservation()
-    
-            if self._termination():
-                self.done = True
-                break
-            self._envStepCounter += 1
-    
+          self._p.stepSimulation()
+          if self._renders:
+            time.sleep(self._timeStep)
+
+          carpos, carorn = self._p.getBasePositionAndOrientation(self.car.car)
+          goalpos, goalorn = self._p.getBasePositionAndOrientation(self.goal_object.goal)
+          car_ob = self.getExtendedObservation()
+
+          if self._termination():
+            self.done = True
+            break
+          self._envStepCounter += 1
+
         # Compute reward as L2 change in distance to goal
+        # dist_to_goal = math.sqrt(((car_ob[0] - self.goal[0]) ** 2 +
+                                  # (car_ob[1] - self.goal[1]) ** 2))
         dist_to_goal = math.sqrt(((carpos[0] - goalpos[0]) ** 2 +
                                   (carpos[1] - goalpos[1]) ** 2))
+        # reward = max(self.prev_dist_to_goal - dist_to_goal, 0)
+        reward = -dist_to_goal
+        self.prev_dist_to_goal = dist_to_goal
 
+        # Done by reaching goal
         if dist_to_goal < 1.5 and not self.reached_goal:
-            # Adjust bonus reward based on task requirements
-            reward = 50  # Example bonus reward for reaching the goal
+            #print("reached goal")
+            self.done = True
             self.reached_goal = True
-            self.done = True  # Set done flag when goal is reached
-        else:
-            # Adjust penalty based on distance to the goal
-            reward = -dist_to_goal
-        
+
         ob = car_ob
         return ob, reward, self.done, dict()
-    
+
+    def seed(self, seed=None):
+        self.np_random, seed = gym.utils.seeding.np_random(seed)
+        return [seed]
+
     def reset(self):
         self._p.resetSimulation()
         self._p.setTimeStep(self._timeStep)
@@ -124,7 +117,7 @@ class SimpleDrivingEnv(gym.Env):
         carpos = self.car.get_observation()
 
         self.prev_dist_to_goal = math.sqrt(((carpos[0] - self.goal[0]) ** 2 +
-                                            (carpos[1] - self.goal[1]) ** 2))
+                                           (carpos[1] - self.goal[1]) ** 2))
         car_ob = self.getExtendedObservation()
         return np.array(car_ob, dtype=np.float32)
 
@@ -133,7 +126,7 @@ class SimpleDrivingEnv(gym.Env):
             # Base information
             car_id = self.car.get_ids()
             proj_matrix = self._p.computeProjectionMatrixFOV(fov=80, aspect=1,
-                                                             nearVal=0.01, farVal=100)
+                                                       nearVal=0.01, farVal=100)
             pos, ori = [list(l) for l in
                         self._p.getBasePositionAndOrientation(car_id)]
             pos[2] = 0.2
@@ -145,6 +138,8 @@ class SimpleDrivingEnv(gym.Env):
             view_matrix = self._p.computeViewMatrix(pos, pos + camera_vec, up_vec)
 
             # Display image
+            # frame = self._p.getCameraImage(100, 100, view_matrix, proj_matrix)[2]
+            # frame = np.reshape(frame, (100, 100, 4))
             (_, _, px, _, _) = self._p.getCameraImage(width=RENDER_WIDTH,
                                                       height=RENDER_HEIGHT,
                                                       viewMatrix=view_matrix,
@@ -153,6 +148,9 @@ class SimpleDrivingEnv(gym.Env):
             frame = np.array(px)
             frame = frame[:, :, :3]
             return frame
+            # self.rendered_img.set_data(frame)
+            # plt.draw()
+            # plt.pause(.00001)
 
         elif mode == "tp_camera":
             car_id = self.car.get_ids()
@@ -179,24 +177,17 @@ class SimpleDrivingEnv(gym.Env):
             return np.array([])
 
     def getExtendedObservation(self):
+        self._observation = []  #self._racecar.getObservation()
         carpos, carorn = self._p.getBasePositionAndOrientation(self.car.car)
         goalpos, goalorn = self._p.getBasePositionAndOrientation(self.goal_object.goal)
         invCarPos, invCarOrn = self._p.invertTransform(carpos, carorn)
         goalPosInCar, goalOrnInCar = self._p.multiplyTransforms(invCarPos, invCarOrn, goalpos, goalorn)
-
-        observation = [goalPosInCar[0], goalPosInCar[1]]
-        return observation
+    
+        self._observation = [carpos, goalPosInCar]  # Update here to use goalPosInCar
+        return self._observation
 
     def _termination(self):
         return self._envStepCounter > 2000
 
     def close(self):
         self._p.disconnect()
-
-    def epsilon_greedy_action(self, q_values):
-        if np.random.rand() < self.epsilon:
-            # Choose a random action
-            return np.random.choice(len(q_values))
-        else:
-            # Choose action greedily based on Q-values
-            return np.argmax(q_values)
